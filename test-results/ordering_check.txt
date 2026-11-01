@@ -1,0 +1,2 @@
+Payments checked: 60, events: 235
+Ordering check: PASSED

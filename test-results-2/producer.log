@@ -1,0 +1,4 @@
+%4|1793568077.999|GETPID|payment-producer-1#producer-1| [thrd:main]: Failed to acquire idempotence PID from broker localhost:30093/1: Broker: Coordinator load in progress: retrying
+Flush complete, messages still in queue: 0
+Broker acks received: 235, delivery failures (sent to DLQ): 0
+Journeys: 60, events: 235, outcome mix: {'completed': 52, 'not_completed': 3, 'invalidated': 5}

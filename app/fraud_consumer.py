@@ -9,7 +9,7 @@ from collections import defaultdict, deque
 
 from confluent_kafka import KafkaError, KafkaException
 
-from common import TOPIC_PAYMENTS, commit_batch, make_consumer
+from common import COMMIT_INTERVAL_S, TOPIC_PAYMENTS, commit_offsets, make_consumer, track_offset
 from fraud_producer import FraudProducer
 
 GROUP = "fraud-scoring-consumer"
@@ -63,12 +63,18 @@ def run():
     consumer.subscribe([TOPIC_PAYMENTS])
     fraud = FraudProducer()
     processed = 0
-    last_msg = None
+    pending = {}  # partition -> next offset, for messages read but not yet committed
+    last_commit = time.monotonic()
 
     try:
         while True:
             msg = consumer.poll(1.0)
             if msg is None:
+                if pending and time.monotonic() - last_commit >= COMMIT_INTERVAL_S:
+                    fraud.flush()
+                    commit_offsets(consumer, pending)
+                    pending.clear()
+                    last_commit = time.monotonic()
                 continue
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
@@ -80,19 +86,21 @@ def run():
                 points, band, reasons = score(event)
                 fraud.publish_score(event, points, band, reasons)
                 processed += 1
-                print(f"scored payment={event['payment_id']} score={points} band={band} reasons={reasons}")
+                print(f"scored payment={event['payment_id']} score={points} band={band} reasons={reasons}", flush=True)
 
-            last_msg = msg  # filtered-out events are also marked done
+            track_offset(pending, msg)  # filtered-out events are also marked done
             if processed and processed % COMMIT_EVERY == 0:
                 fraud.flush()
-                commit_batch(consumer, last_msg)
+                commit_offsets(consumer, pending)
+                pending.clear()
+                last_commit = time.monotonic()
     except KeyboardInterrupt:
         pass
     finally:
         fraud.flush()
-        commit_batch(consumer, last_msg)
+        commit_offsets(consumer, pending)
         consumer.close()
-        print(f"{GROUP} stopped after scoring {processed} payments")
+        print(f"{GROUP} stopped after scoring {processed} payments", flush=True)
 
 
 if __name__ == "__main__":

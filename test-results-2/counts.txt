@@ -1,0 +1,5 @@
+fraud scored: 60
+notifications sent: 63
+Flush complete, messages still in queue: 0
+Broker acks received: 235, delivery failures (sent to DLQ): 0
+Journeys: 60, events: 235, outcome mix: {'completed': 52, 'not_completed': 3, 'invalidated': 5}

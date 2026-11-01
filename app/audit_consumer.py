@@ -5,11 +5,12 @@ Output: audit/payments-YYYY-MM-DD.jsonl (stand-in for WORM / object-storage arch
 """
 import json
 import os
+import time
 from datetime import datetime, timezone
 
 from confluent_kafka import KafkaError, KafkaException
 
-from common import TOPIC_PAYMENTS, commit_batch, make_consumer
+from common import COMMIT_INTERVAL_S, TOPIC_PAYMENTS, commit_offsets, make_consumer, track_offset
 
 GROUP = "audit-reconciliation-consumer"
 AUDIT_DIR = os.getenv("AUDIT_DIR", "audit")
@@ -26,13 +27,23 @@ def run():
     consumer.subscribe([TOPIC_PAYMENTS])
     os.makedirs(AUDIT_DIR, exist_ok=True)
     archived = 0
-    last_msg = None
+    pending = {}
+    last_commit = time.monotonic()
     out = open(archive_path(), "a", encoding="utf-8")
+
+    def flush_and_commit():
+        out.flush()
+        os.fsync(out.fileno())  # the record is on disk before its offset is committed
+        commit_offsets(consumer, pending)
+        pending.clear()
 
     try:
         while True:
             msg = consumer.poll(1.0)
             if msg is None:
+                if pending and time.monotonic() - last_commit >= COMMIT_INTERVAL_S:
+                    flush_and_commit()
+                    last_commit = time.monotonic()
                 continue
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
@@ -47,21 +58,18 @@ def run():
             }
             out.write(json.dumps(record, separators=(",", ":")) + "\n")
             archived += 1
-            last_msg = msg
+            track_offset(pending, msg)
 
             if archived % COMMIT_EVERY == 0:
-                out.flush()
-                os.fsync(out.fileno())
-                commit_batch(consumer, last_msg)
+                flush_and_commit()
+                last_commit = time.monotonic()
     except KeyboardInterrupt:
         pass
     finally:
-        out.flush()
-        os.fsync(out.fileno())
+        flush_and_commit()
         out.close()
-        commit_batch(consumer, last_msg)
         consumer.close()
-        print(f"{GROUP} archived {archived} events")
+        print(f"{GROUP} archived {archived} events", flush=True)
 
 
 if __name__ == "__main__":

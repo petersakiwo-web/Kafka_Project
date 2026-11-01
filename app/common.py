@@ -4,7 +4,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from confluent_kafka import Consumer, Producer
+from confluent_kafka import Consumer, Producer, TopicPartition
 
 BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "kafka-service:9092")
 
@@ -13,6 +13,8 @@ TOPIC_FRAUD = "digital.fraud.scores.v1"
 TOPIC_NOTIFICATIONS = "digital.notifications.v1"
 
 SCHEMA_VERSION = 1
+# Commit at least this often, so a low-volume or stopped consumer does not leave work uncommitted.
+COMMIT_INTERVAL_S = 2.0
 DLQ_PATH = os.getenv("DLQ_PATH", "dlq/failed-events.jsonl")
 
 # Counts successful broker acknowledgements per producer process, used for evidence output.
@@ -107,7 +109,19 @@ def publish(producer, topic, key, event):
     producer.poll(0)
 
 
-def commit_batch(consumer, last_msg):
-    """Commit the offset of the last processed message (Kafka commits are cumulative per partition)."""
-    if last_msg is not None:
-        consumer.commit(message=last_msg, asynchronous=False)
+def track_offset(offsets, msg):
+    """Remember the next offset to read for this message's partition.
+
+    A consumer reads several partitions, so the commit must cover every partition it has
+    processed, not just the partition of the last message. Committing only the last message
+    left the other partitions uncommitted and caused re-reads after a restart.
+    """
+    offsets[(msg.topic(), msg.partition())] = msg.offset() + 1
+
+
+def commit_offsets(consumer, offsets):
+    if offsets:
+        consumer.commit(
+            offsets=[TopicPartition(topic, partition, offset) for (topic, partition), offset in offsets.items()],
+            asynchronous=False,
+        )

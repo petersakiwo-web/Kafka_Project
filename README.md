@@ -60,4 +60,4 @@ Set `KAFKA_BOOTSTRAP` to point at your cluster (default `kafka-service:9092`).
 
 ## Status
 
-The code and documentation are complete. Live run evidence (topic describe output, producer counts, consumer lag and the ordering check) has not been captured yet. See the **TO CAPTURE** sections in `payment_events_setup.md`.
+The code runs end to end on a local 3-broker Kafka cluster. Test 1 (60 journeys) and test 2 (60 journeys, after fixes) are in `test-results/` and `test-results-2/`. Test 2 passed: 235 events produced, fraud scored 60 payments, 63 notifications sent, the audit archive holds 235 unique events, lag is 0 on every partition for all three groups, and ordering passed. Issues and fixes are listed in `test-results-2/ISSUES_AND_FIXES.txt`.

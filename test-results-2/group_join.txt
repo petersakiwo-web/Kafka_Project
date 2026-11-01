@@ -1,0 +1,20 @@
+[13] states fraud=found. notif=found. audit=found.
+[14] states fraud=found. notif=found. audit=found.
+[1] stable groups: 3/3
+producer done
+[15] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[16] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[17] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[18] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[19] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[20] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[21] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[22] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[23] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[24] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[25] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[26] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[27] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[28] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[29] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS
+[30] states fraud=#MEMBERS notif=#MEMBERS audit=#MEMBERS

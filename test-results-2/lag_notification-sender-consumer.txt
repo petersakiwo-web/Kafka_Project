@@ -1,0 +1,10 @@
+
+Consumer group 'notification-sender-consumer' has no active members.
+
+GROUP                        TOPIC                         PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG             CONSUMER-ID     HOST            CLIENT-ID
+notification-sender-consumer digital.payments.lifecycle.v1 0          27              27              0               -               -               -
+notification-sender-consumer digital.payments.lifecycle.v1 1          40              40              0               -               -               -
+notification-sender-consumer digital.payments.lifecycle.v1 2          27              27              0               -               -               -
+notification-sender-consumer digital.payments.lifecycle.v1 3          46              46              0               -               -               -
+notification-sender-consumer digital.payments.lifecycle.v1 4          36              36              0               -               -               -
+notification-sender-consumer digital.payments.lifecycle.v1 5          59              59              0               -               -               -

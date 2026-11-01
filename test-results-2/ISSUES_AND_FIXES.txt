@@ -1,0 +1,111 @@
+KAFKA PAYMENT EVENTS POC - ISSUES FOUND AND FIXES (TEST 1 AND TEST 2)
+=====================================================================
+
+Environment: Rancher Desktop Kubernetes, 3 Kafka brokers (kafka-0/1/2),
+host access via NodePorts localhost:30092-30094.
+
+
+TEST 1 ISSUES (live run, 60 journeys, 235 events)
+-------------------------------------------------
+
+T1-1  Docker engine not running, Python not installed
+      Symptom : "docker" could not reach the daemon; "python" not found.
+      Fix     : Installed Python 3.12 (user scope, winget) and confluent-kafka 2.5.0.
+                Started Rancher Desktop; its Kubernetes cluster and Kafka pods became reachable.
+
+T1-2  Topic names collided with an existing cluster
+      Symptom : Cluster already had digitalpayments.* topics owned by someone else.
+      Fix     : Project topics use the digital.*.v1 names. No existing topic was changed or deleted.
+
+T1-3  Duplicate audit records after an interrupted consumer run
+      Symptom : Audit archive held 464 lines for 235 unique events (229 duplicates).
+      Cause   : First audit run stopped before its final commit; the rerun re-read those records.
+      Fix     : Not a defect in the design (at-least-once). Downstream reconciliation must
+                de-duplicate on event_id. Fixed in test 2 by per-partition commits (T2-2).
+
+T1-4  Consumers stopped with SIGINT did not run their shutdown code on Windows
+      Symptom : timeout -s INT returned exit 124; the final commit never ran.
+      Fix     : Partial. Timed commits (T2-3) limit lost work. Hard stop still skips shutdown.
+
+T1-5  Consumer group coordinator not ready / fraud and notification groups never joined
+      Symptom : "Coordinator load in progress" for about 10 minutes; no messages consumed.
+      Cause   : Broker OOM kills (see T2-1).
+
+T1-6  Lag command failed mid-run
+      Symptom : kafka-consumer-groups returned "container not found" (exit 137).
+      Cause   : Broker pod was OOM-killed during the check (see T2-1).
+
+T1-7  CLI property syntax in the template files
+      Symptom : Templates pass producer/consumer settings with --property.
+      Fix     : Kafka CLI uses --producer-property and --consumer-property. The project uses
+                Python clients (common.py), which apply the settings directly.
+
+
+TEST 2 ISSUES (rerun after fixes, 60 journeys, 235 events)
+----------------------------------------------------------
+
+T2-1  Kafka brokers OOM-killed
+      Symptom : kubectl get pod showed reason OOMKilled (exit 137) on kafka-0 and kafka-1;
+                restarts every few minutes.
+      Cause   : Brokers run with -Xmx1G inside a 1Gi container limit. 300 partitions x RF 3
+                (100/100/50 partitions per topic) plus existing topics exceeded the memory budget.
+      Fix     : Deleted the project's own test topics and recreated them with 6 / 6 / 3
+                partitions (replication 3, minISR 2 unchanged). create-topics.sh now accepts
+                PAYMENT_PARTITIONS, FRAUD_PARTITIONS and NOTIFICATION_PARTITIONS overrides;
+                production defaults (100 / 100 / 50) are unchanged.
+      Not fixed: Broker heap and memory limits are shared cluster settings, not changed here.
+
+T2-2  Consumers committed only one partition's offset
+      Symptom : Notification group showed a committed offset on partition 5 only; the other
+                five partitions had no commit. Audit consumer behaved the same way.
+      Cause   : consumer.commit(message=last_msg) commits only the partition of that message.
+      Fix     : common.py adds track_offset() and commit_offsets() (TopicPartition list).
+                fraud_consumer.py, notification_consumer.py and audit_consumer.py track an
+                offset per (topic, partition) and commit all of them.
+
+T2-3  Short runs never committed and logs looked empty
+      Symptom : 60 journeys never reached the 100-message commit point, so nothing was committed.
+                Redirected stdout was block-buffered, so logs showed nothing while running.
+      Fix     : All three consumers commit at least every 2 seconds (COMMIT_INTERVAL_S = 2.0).
+                Print statements use flush=True.
+
+T2-4  Stale state from test 1
+      Symptom : Test 1 consumer groups held a committed offset on partition 5 only, and test 1
+                topics held 100-partition data.
+      Fix     : Deleted the three project consumer groups and the three project topics (both
+                created by this project during test 1), then recreated the topics for test 2.
+                No other cluster topic or group was touched.
+
+T2-5  Shell lag check reported false alarms
+      Symptom : kafka-consumer-groups --describe loop reported 3 partitions as lagging or
+                unassigned. Each call took about 40 seconds and some timed out.
+      Cause   : Shell parsing of the describe table plus slow admin calls during broker recovery.
+      Fix     : lag_check.py uses the Kafka admin API to compare committed offsets with partition
+                end offsets. Result: lag 0 on all 6 partitions for all 3 groups (total 235).
+
+T2-6  Consumers could not be stopped cleanly on Windows
+      Symptom : Hard stop via timeout skips the finally block.
+      Status  : Open. Timed commits (T2-3) limit lost work to about 2 seconds. Possible
+                duplicate fraud and notification output after a hard stop; the source_event_id
+                field allows downstream de-duplication.
+
+T2-7  Stop request for old consumer processes denied
+      Symptom : Attempt to kill leftover consumer processes was blocked by the permission
+                classifier.
+      Resolution: Did not retry. Old processes used a 15-minute timeout and exited on their own.
+
+T2-8  Fraud velocity state is in memory
+      Symptom : Velocity counts reset on every consumer restart.
+      Status  : Known limitation for the POC. Production needs a keyed state store.
+
+
+RESULTS AFTER FIXES (TEST 2)
+----------------------------
+- Producer: 235 broker acks, 0 delivery failures.
+- Fraud consumer: 60 payments scored.
+- Notification consumer: 63 notifications sent (55 approved, 8 failed).
+- Audit consumer: 235 unique events archived, 0 duplicates.
+- Lag: 0 on all partitions for all three groups.
+- Ordering check: PASSED (60 payments, 235 events).
+
+See TEST_2_SUMMARY.md for the full results table.

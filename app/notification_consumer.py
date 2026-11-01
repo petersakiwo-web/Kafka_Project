@@ -4,10 +4,11 @@ sends the customer notification (mocked here) and publishes the outcome.
 Group: notification-sender-consumer   SLA: event-to-notification < 2 s
 """
 import json
+import time
 
 from confluent_kafka import KafkaError, KafkaException
 
-from common import TOPIC_PAYMENTS, commit_batch, make_consumer
+from common import COMMIT_INTERVAL_S, TOPIC_PAYMENTS, commit_offsets, make_consumer, track_offset
 from notification_producer import NotificationProducer
 
 GROUP = "notification-sender-consumer"
@@ -24,7 +25,7 @@ FAILED_EVENTS = {
 
 def send_push(customer_id, text):
     """Mock of the push / SMS gateway call. A real sender would retry with back-off."""
-    print(f"  -> push to {customer_id}: {text}")
+    print(f"  -> push to {customer_id}: {text}", flush=True)
     return True
 
 
@@ -43,12 +44,18 @@ def run():
     consumer.subscribe([TOPIC_PAYMENTS])
     notifier = NotificationProducer()
     processed = 0
-    last_msg = None
+    pending = {}
+    last_commit = time.monotonic()
 
     try:
         while True:
             msg = consumer.poll(1.0)
             if msg is None:
+                if pending and time.monotonic() - last_commit >= COMMIT_INTERVAL_S:
+                    notifier.flush()
+                    commit_offsets(consumer, pending)
+                    pending.clear()
+                    last_commit = time.monotonic()
                 continue
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
@@ -62,17 +69,19 @@ def run():
                     notifier.publish_notification(event, outcome, text)
                 processed += 1
 
-            last_msg = msg
+            track_offset(pending, msg)
             if processed and processed % COMMIT_EVERY == 0:
                 notifier.flush()
-                commit_batch(consumer, last_msg)
+                commit_offsets(consumer, pending)
+                pending.clear()
+                last_commit = time.monotonic()
     except KeyboardInterrupt:
         pass
     finally:
         notifier.flush()
-        commit_batch(consumer, last_msg)
+        commit_offsets(consumer, pending)
         consumer.close()
-        print(f"{GROUP} stopped after sending {processed} notifications")
+        print(f"{GROUP} stopped after sending {processed} notifications", flush=True)
 
 
 if __name__ == "__main__":
